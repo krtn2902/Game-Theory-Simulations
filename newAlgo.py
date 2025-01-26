@@ -54,7 +54,7 @@ def tit_for_tat(player_history, opponent_history): # defect if opponent defected
         return 0
     return opponent_history[-1]
 
-def grudger(player_history, opponent_history): # cooperate until the opponent defects once, then always defect
+def grim(player_history, opponent_history): # cooperate until the opponent defects once, then always defect
     if not opponent_history:
         return 0 
     if opponent_history[-1] == 1 or player_history[-1] == 1:
@@ -78,14 +78,21 @@ def switch(player_history, opponent_history): # alternatively changes choice
         return 0
     return 1
 
+def pavlov(player_history, opponent_history):
+    if not opponent_history:
+        return 0
+    if player_history[-1] == opponent_history[-1]:
+        return 0
+    return 1
+
 def always_defect(player_history, opponent_history):
     return 1
 def always_cooperate(player_history, opponent_history):
     return 0
 
-def smart_player(player_history, opponent_history): # yet to be implemented
+def smart_player(player_history, opponent_history): 
+    # a approach to be implemented here
     return 0
-
 
 
 player1 = Player(strategy=tit_for_tat)  
