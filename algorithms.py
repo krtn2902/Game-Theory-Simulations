@@ -6,7 +6,7 @@ T = 5  # Temptation (defect when other cooperates)
 S = 0  # Sucker's payoff (cooperate when other defects)
 P = 1  # Punishment for mutual defection
 
-# Define strategies
+# Strategies
 def always_cooperate(own_history, opponent_history):
     return 'C'
 
