@@ -91,13 +91,39 @@ def always_defect(player_history, opponent_history):
 def always_cooperate(player_history, opponent_history):
     return 0
 
-def smart_player(player_history, opponent_history): 
-    # a approach to be implemented here
-    return 0
+def smart_player(player_history, opponent_history):
+
+    """
+    Plays random move for first 5 trials, 
+    After 5 trials,
+        if opponent defected 80% times, always defect
+        if cooperates 80% of the time, always defect
+        else if tit for tat, always defect
+
+    """
+    if len(opponent_history) < 5:
+        return random_choice(player_history, opponent_history)  # Random start
+    
+    # Analyze opponent behavior
+    cooperate_count = opponent_history.count(0)
+    defect_count = opponent_history.count(1)
+    total_moves = len(opponent_history)
+
+    # Thresholds for identifying strategies
+    if defect_count / total_moves > 0.8:  # Opponent defects most of the time
+        return 1  # Always defect
+    elif cooperate_count / total_moves > 0.8:  # Opponent cooperates most of the time
+        return 1  # Exploit by defecting
+    elif opponent_history[-2:] == [1, 1]:  # Tit-for-2-tats detection
+        return 1
+    elif opponent_history[-1] == 1:  # Tit-for-tat detection
+        return 1  # Defect in response
+    else:
+        return 0  # Cooperate otherwise
 
 
-player1 = Player(strategy=tit_for_tat)  
-player2 = Player(strategy=random_choice)  
+player1 = Player(strategy=smart_player)  
+player2 = Player(strategy=tit_for_tat)  
 
 game = Game(trials=10)
 score_player1, score_player2 = game.play(player1, player2)
