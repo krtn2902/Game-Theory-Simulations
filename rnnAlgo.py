@@ -1,150 +1,115 @@
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
 
-# Define the payoff matrix
-PAYOFF_MATRIX = {
-    (0, 0): 3,  # Both cooperate
-    (0, 1): 0,  # Cooperate vs defect
-    (1, 0): 5,  # Defect vs cooperate
-    (1, 1): 1   # Both defect
-}
-
-class PolicyNetwork(nn.Module):
-    def __init__(self, input_size=2, hidden_size=16, output_size=2):
-        super(PolicyNetwork, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
-        self.softmax = nn.Softmax(dim=1)
+# Define the RNN-based Actor-Critic model
+class ActorCriticRNN(nn.Module):
+    def __init__(self, input_size=2, hidden_size=128, num_layers=1):
+        super(ActorCriticRNN, self).__init__()
         self.hidden_size = hidden_size
-        self.hidden = None
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.actor = nn.Linear(hidden_size, 2)  # Outputs probabilities for cooperate/defect
+        self.critic = nn.Linear(hidden_size, 1)  # Estimates state value
 
-    def forward(self, x, hidden):
-        lstm_out, hidden = self.lstm(x, hidden)
-        lstm_out = lstm_out[:, -1, :]  # Take the last output of the sequence
-        fc_out = self.fc(lstm_out)
-        probs = self.softmax(fc_out)
-        return probs, hidden
+    def forward(self, x, hidden=None):
+        batch_size = x.size(0)
+        if hidden is None:
+            h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+            c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+            hidden = (h0, c0)
+        out, hidden = self.lstm(x, hidden)
+        last_out = out[:, -1, :]  # Use the last output of the sequence
+        action_probs = torch.softmax(self.actor(last_out), dim=-1)
+        state_value = self.critic(last_out)
+        return action_probs, state_value, hidden
 
-    def init_hidden(self, batch_size=1):
-        return (torch.zeros(1, batch_size, self.hidden_size),
-                torch.zeros(1, batch_size, self.hidden_size))
+# Initialize the model (Note: Load pre-trained weights in a real scenario)
+model = ActorCriticRNN()
+model.eval()  # Set to evaluation mode
 
-def tit_for_tat(history):
-    if not history:
-        return 0  # Cooperate first
+def agent_player(player_history, opponent_history):
+    window_size = 5  # Number of past moves to consider
+    # Combine histories into pairs of (agent_action, opponent_action)
+    combined = list(zip(player_history, opponent_history))
+    # Pad or truncate the history to the window size
+    if len(combined) < window_size:
+        combined = [(0, 0)] * (window_size - len(combined)) + combined
     else:
-        return history[-1][0]  # Mirror opponent's last action
+        combined = combined[-window_size:]
+    # Convert to tensor and add batch dimension
+    input_tensor = torch.tensor(combined, dtype=torch.float32).unsqueeze(0)
+    # Get action probabilities from the model
+    with torch.no_grad():
+        action_probs, _, _ = model(input_tensor)
+    # Select action with the highest probability
+    return torch.argmax(action_probs).item()
 
-def always_defect(history):
-    return 1
+# Existing game and strategy code (unchanged)
+class Player:
+    def __init__(self, strategy):
+        self.strategy = strategy 
+        self.history = []  
 
-def random_strategy(history):
-    return np.random.choice([0, 1])
+    def make_move(self, opponent_history):
+        return self.strategy(self.history, opponent_history)
 
-def calculate_reward(my_action, opponent_action):
-    return PAYOFF_MATRIX[(my_action, opponent_action)]
+    def update_history(self, move):
+        self.history.append(move)
 
-def discount_rewards(rewards, gamma=0.99):
-    discounted = []
-    R = 0
-    for r in reversed(rewards):
-        R = r + gamma * R
-        discounted.insert(0, R)
-    discounted = torch.tensor(discounted)
-    return (discounted - discounted.mean()) / (discounted.std() + 1e-9)
+class Game:
+    def __init__(self, trials):
+        self.game_length = trials
+        self.player1_score = 0
+        self.player2_score = 0
 
-def play_episode(model, opponent_strategy, num_rounds=10, training=True):
-    model.hidden = model.init_hidden()
-    history = []
-    log_probs = []
-    rewards = []
-    
-    # Initial previous actions (batch_size=1, seq_len=1, input_size=2)
-    prev_actions = torch.zeros(1, 1, 2) if training else None
+    def play(self, player1, player2):
+        for trial in range(self.game_length):
+            move_player1 = player1.make_move(player2.history)
+            move_player2 = player2.make_move(player1.history)
 
-    for _ in range(num_rounds):
-        probs, hidden = model(prev_actions, model.hidden)
-        model.hidden = hidden  # Update hidden state
-        
-        m = torch.distributions.Categorical(probs)
-        action = m.sample()
-        log_prob = m.log_prob(action)
-        
-        opponent_action = opponent_strategy(history)
-        reward = calculate_reward(action.item(), opponent_action)
-        
-        log_probs.append(log_prob)
-        rewards.append(reward)
-        history.append((action.item(), opponent_action))
-        
-        # Prepare next input: (my_action, opponent_action)
-        prev_actions = torch.tensor([[[action.item(), opponent_action]]], dtype=torch.float32)
-    
-    return log_probs, rewards
+            player1.update_history(move_player1)
+            player2.update_history(move_player2)
 
-def train(model, optimizer, num_episodes=1000, gamma=0.99):
-    for episode in range(num_episodes):
-        # Vary opponents for robustness
-        if episode % 4 == 0:
-            opponent = tit_for_tat
-        elif episode % 4 == 1:
-            opponent = always_defect
-        elif episode % 4 == 2:
-            opponent = random_strategy
+            self.calculate_payoff(move_player1, move_player2)
+
+        return self.player1_score, self.player2_score
+
+    def calculate_payoff(self, move_player1, move_player2):
+        if move_player1 == 0 and move_player2 == 0:
+            self.player1_score += 3
+            self.player2_score += 3
+        elif move_player1 == 0 and move_player2 == 1:
+            self.player1_score += 0
+            self.player2_score += 5
+        elif move_player1 == 1 and move_player2 == 0:
+            self.player1_score += 5
+            self.player2_score += 0
         else:
-            opponent = np.random.choice([tit_for_tat, always_defect, random_strategy])
-        
-        log_probs, rewards = play_episode(model, opponent)
-        discounted_rewards = discount_rewards(rewards, gamma)
-        
-        policy_loss = []
-        for log_prob, reward in zip(log_probs, discounted_rewards):
-            policy_loss.append(-log_prob * reward)
-        policy_loss = torch.cat(policy_loss).sum()
-        
-        optimizer.zero_grad()
-        policy_loss.backward()
-        optimizer.step()
-        
-        if episode % 100 == 0:
-            avg_reward = sum(rewards) / len(rewards)
-            print(f"Episode {episode}, Loss: {policy_loss.item():.2f}, Avg Reward: {avg_reward:.2f}")
+            self.player1_score += 1
+            self.player2_score += 1
 
-# Initialize model and optimizer
-model = PolicyNetwork()
-optimizer = optim.Adam(model.parameters(), lr=0.01)
+# Strategy functions (unchanged)
+def tit_for_tat(player_history, opponent_history):
+    return opponent_history[-1] if opponent_history else 0
 
-# Train the model
-train(model, optimizer, num_episodes=1000)
+def grim(player_history, opponent_history):
+    if 1 in opponent_history or (player_history and player_history[-1] == 1):
+        return 1
+    return 0
 
-# Example of using the trained model against Tit-for-Tat
-def test_model(model, opponent_strategy, num_rounds=10):
-    model.eval()
-    history = []
-    total_reward = 0
-    
-    model.hidden = model.init_hidden()
-    prev_actions = torch.zeros(1, 1, 2)
-    
-    for _ in range(num_rounds):
-        with torch.no_grad():
-            probs, hidden = model(prev_actions, model.hidden)
-            model.hidden = hidden
-            action = torch.argmax(probs).item()
-        
-        opponent_action = opponent_strategy(history)
-        reward = calculate_reward(action, opponent_action)
-        total_reward += reward
-        
-        history.append((action, opponent_action))
-        prev_actions = torch.tensor([[[action, opponent_action]]], dtype=torch.float32)
-    
-    print(f"Test against {opponent_strategy.__name__}:")
-    print(f"Total reward: {total_reward}, Actions: {[a[0] for a in history]}")
+# Example usage
+if __name__ == "__main__":
+    # Create players
+    rl_agent = Player(strategy=agent_player)
+    opponent = Player(strategy=tit_for_tat)
 
-# Test against different strategies
-test_model(model, tit_for_tat)
-test_model(model, always_defect)
-test_model(model, random_strategy)
+    # Play a game
+    game = Game(trials=10)
+    score_rl, score_opponent = game.play(rl_agent, opponent)
+
+    print(f"RL Agent's score: {score_rl}")
+    print(f"Opponent's score: {score_opponent}")
+    print("RL Agent's moves:", rl_agent.history)
+    print("Opponent's moves:", opponent.history)

@@ -1,4 +1,7 @@
 import random
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 class Player:
     def __init__(self, strategy):
@@ -120,16 +123,59 @@ def smart_player(player_history, opponent_history):
         return 1  # Defect in response
     else:
         return 0  # Cooperate otherwise
+    
+class ActorCriticRNN(nn.Module):
+    def __init__(self, input_size=2, hidden_size=128, num_layers=1):
+        super(ActorCriticRNN, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.actor = nn.Linear(hidden_size, 2)  # Outputs probabilities for cooperate/defect
+        self.critic = nn.Linear(hidden_size, 1)  # Estimates state value
+
+    def forward(self, x, hidden=None):
+        batch_size = x.size(0)
+        if hidden is None:
+            h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+            c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+            hidden = (h0, c0)
+        out, hidden = self.lstm(x, hidden)
+        last_out = out[:, -1, :]  # Use the last output of the sequence
+        action_probs = torch.softmax(self.actor(last_out), dim=-1)
+        state_value = self.critic(last_out)
+        return action_probs, state_value, hidden
+
+# Initialize the model (Note: Load pre-trained weights in a real scenario)
+model = ActorCriticRNN()
+model.eval()  # Set to evaluation mode
+
+def agent_player(player_history, opponent_history):
+    window_size = 5  # Number of past moves to consider
+    # Combine histories into pairs of (agent_action, opponent_action)
+    combined = list(zip(player_history, opponent_history))
+    # Pad or truncate the history to the window size
+    if len(combined) < window_size:
+        combined = [(0, 0)] * (window_size - len(combined)) + combined
+    else:
+        combined = combined[-window_size:]
+    # Convert to tensor and add batch dimension
+    input_tensor = torch.tensor(combined, dtype=torch.float32).unsqueeze(0)
+    # Get action probabilities from the model
+    with torch.no_grad():
+        action_probs, _, _ = model(input_tensor)
+    # Select action with the highest probability
+    return torch.argmax(action_probs).item()
 
 
-player1 = Player(strategy=smart_player)  
-player2 = Player(strategy=tit_for_tat)  
 
-game = Game(trials=10)
+player1 = Player(strategy=agent_player)  
+player2 = Player(strategy=pavlov)  
+
+game = Game(trials=100)
 score_player1, score_player2 = game.play(player1, player2)
 
-print(player1.history)
-print(player2.history)
+# print(player1.history)
+# print(player2.history)
 
 print(f"Player 1's score: {score_player1}")
 print(f"Player 2's score: {score_player2}")
@@ -138,5 +184,7 @@ winner =  1
 if score_player1 < score_player2:
     winner = 2
 
-
-print(f"WINNER: player {winner}")
+if score_player1==score_player2:
+    print(f"Game tied")
+else:
+    print(f"WINNER: player {winner}")
