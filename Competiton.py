@@ -33,6 +33,7 @@ def analyze_strategies(trials=10, games_per_matchup=5):
     average_scores = {name: 0 for name in strategies}
     total_games = {name: 0 for name in strategies}
     payoff_matrix = np.zeros((len(strategies), len(strategies)))
+    opponent_payoff_matrix = np.zeros((len(strategies), len(strategies)))
     cooperation_rates = {name: [] for name in strategies}
     
     # Track detailed matchup history
@@ -44,6 +45,7 @@ def analyze_strategies(trials=10, games_per_matchup=5):
                 continue
                 
             strategy_total_score = 0
+            opponent_total_score = 0
             strategy_cooperation_count = 0
             
             for game_num in range(games_per_matchup):
@@ -53,6 +55,7 @@ def analyze_strategies(trials=10, games_per_matchup=5):
                 score1, score2 = game.play(player1, player2)
                 
                 strategy_total_score += score1
+                opponent_total_score += score2
                 strategy_cooperation_count += sum(1 for move in player1.history if move == 0)
                 
                 # Record detailed matchup data
@@ -62,13 +65,18 @@ def analyze_strategies(trials=10, games_per_matchup=5):
                     'Game': game_num + 1,
                     'Score': score1,
                     'Opponent_Score': score2,
+                    'Won': score1 > score2,
                     'Cooperation_Rate': sum(1 for move in player1.history if move == 0) / len(player1.history)
                 })
             
             avg_score = strategy_total_score / games_per_matchup
-            payoff_matrix[i, j] = avg_score
+            opponent_avg_score = opponent_total_score / games_per_matchup
             
-            if avg_score > (trials * 2):  # Threshold for winning
+            payoff_matrix[i, j] = avg_score
+            opponent_payoff_matrix[i, j] = opponent_avg_score
+            
+            # New winning criteria: strategy must score higher than opponent
+            if avg_score > opponent_avg_score:
                 results[strategy_name] += 1
             
             average_scores[strategy_name] += avg_score
@@ -87,6 +95,7 @@ def analyze_strategies(trials=10, games_per_matchup=5):
         'average_scores': average_scores,
         'cooperation_rates': cooperation_rates,
         'payoff_matrix': payoff_matrix,
+        'opponent_payoff_matrix': opponent_payoff_matrix,
         'strategy_names': list(strategies.keys()),
         'matchup_history': pd.DataFrame(matchup_history)
     }
