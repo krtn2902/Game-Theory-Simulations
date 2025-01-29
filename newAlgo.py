@@ -168,23 +168,23 @@ def agent_player(player_history, opponent_history):
 
 
 
-player1 = Player(strategy=agent_player)  
-player2 = Player(strategy=pavlov)  
+# player1 = Player(strategy=agent_player)  
+# player2 = Player(strategy=pavlov)  
 
-game = Game(trials=100)
-score_player1, score_player2 = game.play(player1, player2)
+# game = Game(trials=100)
+# score_player1, score_player2 = game.play(player1, player2)
 
-# print(player1.history)
-# print(player2.history)
+# # print(player1.history)
+# # print(player2.history)
 
-print(f"Player 1's score: {score_player1}")
-print(f"Player 2's score: {score_player2}")
+# print(f"Player 1's score: {score_player1}")
+# print(f"Player 2's score: {score_player2}")
 
-winner =  1
-if score_player1 < score_player2:
-    winner = 2
+# winner =  1
+# if score_player1 < score_player2:
+#     winner = 2
 
-if score_player1==score_player2:
-    print(f"Game tied")
-else:
-    print(f"WINNER: player {winner}")
+# if score_player1==score_player2:
+#     print(f"Game tied")
+# else:
+#     print(f"WINNER: player {winner}")
