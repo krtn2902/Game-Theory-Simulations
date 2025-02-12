@@ -125,7 +125,7 @@ def smart_player(player_history, opponent_history):
         return 0  # Cooperate otherwise
     
 class ActorCriticRNN(nn.Module):
-    def __init__(self, input_size=2, hidden_size=128, num_layers=1):
+    def __init__(self, input_size=2, hidden_size=16, num_layers=1):
         super(ActorCriticRNN, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -151,9 +151,7 @@ model.eval()  # Set to evaluation mode
 
 def agent_player(player_history, opponent_history):
     window_size = 5  # Number of past moves to consider
-    # Combine histories into pairs of (agent_action, opponent_action)
     combined = list(zip(player_history, opponent_history))
-    # Pad or truncate the history to the window size
     if len(combined) < window_size:
         combined = [(0, 0)] * (window_size - len(combined)) + combined
     else:
@@ -167,6 +165,7 @@ def agent_player(player_history, opponent_history):
     return torch.argmax(action_probs).item()
 
 
+## UNCOMMENT TO RUN THE GAME ##
 
 # player1 = Player(strategy=agent_player)  
 # player2 = Player(strategy=pavlov)  
